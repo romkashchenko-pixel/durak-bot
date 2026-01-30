@@ -5,72 +5,122 @@
 <title>Durak 🃏</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-body { margin:0; padding:0; font-family:system-ui; background:#0f172a; color:white; display:flex; flex-direction:column; align-items:center; }
-header { width:100%; padding:12px; text-align:center; background:#1e293b; font-size:20px; font-weight:bold; }
-.profile { display:flex; flex-direction:column; align-items:center; margin:10px; }
-.profile img { width:80px; height:80px; border-radius:50%; margin-bottom:8px; }
-button { width:80%; max-width:300px; padding:16px; margin:8px 0; border:none; border-radius:16px; font-size:18px; color:white; background:#6366f1; cursor:pointer; }
-#cards { display:flex; flex-wrap:wrap; justify-content:center; margin-top:12px; }
-.card { width:60px; height:90px; border-radius:8px; background:white; color:black; display:flex; align-items:center; justify-content:center; margin:4px; font-weight:bold; }
-#roomCode { margin-top:10px; font-size:18px; }
+  body { margin:0; padding:0; font-family:system-ui; background:linear-gradient(#2c3e50, #34495e); color:white; display:flex; flex-direction:column; align-items:center; height:100vh; overflow:hidden;}
+  header { width:100%; padding:12px; text-align:center; font-size:24px; font-weight:bold; background:rgba(0,0,0,0.4);}
+  #gameField { position:relative; flex:1; width:100%; display:flex; flex-direction:column; justify-content:space-between; align-items:center; }
+  #opponentArea, #playerArea { display:flex; justify-content:center; padding:5px; }
+  #tableArea { position:relative; width:100%; height:180px; display:flex; justify-content:center; align-items:center; }
+  .card { width:50px; height:80px; border-radius:8px; background:white; color:black; display:flex; align-items:center; justify-content:center; font-weight:bold; position:absolute; transition:all 0.3s ease; box-shadow:0 4px 6px rgba(0,0,0,0.3); cursor:pointer;}
+  #deck { width:60px; height:90px; border-radius:8px; background:#6366f1; display:flex; align-items:center; justify-content:center; position:absolute; top:50%; left:10px; transform:translateY(-50%); font-weight:bold; cursor:pointer;}
+  #trump { width:60px; height:90px; border-radius:8px; background:#f59e0b; display:flex; align-items:center; justify-content:center; position:absolute; top:50%; left:80px; transform:translateY(-50%); font-weight:bold;}
+  button { width:80%; max-width:300px; padding:12px; margin:4px; border:none; border-radius:16px; font-size:18px; color:white; background:#6366f1; cursor:pointer;}
+  #roomCode { margin-top:6px; font-size:16px; text-align:center;}
 </style>
 </head>
 <body>
 
 <header>Durak 🃏</header>
 
-<div class="profile">
-  <img id="avatar" src="" alt="Avatar">
-  <input id="nickname" type="text" placeholder="Change nickname">
-  <button id="saveProfile">Save Profile</button>
+<div id="gameField">
+  <div id="opponentArea"></div>
+  <div id="tableArea"></div>
+  <div id="playerArea"></div>
+  <div id="deck">Deck</div>
+  <div id="trump">♠</div>
 </div>
 
-<button id="playBot">Play vs Bot</button>
-<button id="createRoom">Create Room</button>
-<input id="joinCode" type="text" placeholder="Enter Room Code">
-<button id="joinRoom">Join Room</button>
-
-<div id="roomCode"></div>
-<div id="cards"></div>
+<div style="width:100%; display:flex; flex-direction:column; align-items:center; margin-bottom:8px;">
+  <button id="playBot">Play vs Bot</button>
+  <button id="createRoom">Create Room</button>
+  <input id="joinCode" type="text" placeholder="Enter Room Code">
+  <button id="joinRoom">Join Room</button>
+  <div id="roomCode"></div>
+</div>
 
 <script>
+// Telegram Web App
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-// profile
-const avatarImg = document.getElementById('avatar');
-const nicknameInput = document.getElementById('nickname');
-avatarImg.src = tg.initDataUnsafe.user?.photo_url || "https://via.placeholder.com/80";
-nicknameInput.value = tg.initDataUnsafe.user?.username || "Player";
-document.getElementById('saveProfile').addEventListener('click', () => {
-  localStorage.setItem('durak_nick', nicknameInput.value);
-  alert("Profile saved!");
-});
+// Cards logic
+const suits = ["♠","♥","♦","♣"];
+const values = ["6","7","8","9","10","J","Q","K","A"];
+let deck = [];
+let playerHand = [];
+let botHand = [];
+let tableCards = [];
+let trumpCard = null;
 
-// basic deck
-function generateDeck() {
-  const suits = ["♠", "♥", "♦", "♣"];
-  const values = ["6","7","8","9","10","J","Q","K","A"];
-  const deck = [];
+function createDeck() {
+  deck = [];
   for(const s of suits) {
-    for(const v of values) deck.push(v+s);
+    for(const v of values) deck.push({suit:s, value:v});
   }
-  return deck.sort(()=>Math.random()-0.5);
+  deck.sort(()=>Math.random()-0.5);
+  trumpCard = deck[deck.length-1];
+  document.getElementById('trump').innerText = trumpCard.suit;
 }
 
-const cardsDiv = document.getElementById('cards');
-document.getElementById('playBot').addEventListener('click', ()=>{
-  cardsDiv.innerHTML = "";
-  const deck = generateDeck();
-  const hand = deck.slice(0,6);
-  hand.forEach(c=>{
+// Render hands
+function renderHand(hand, areaId, isPlayer=true) {
+  const area = document.getElementById(areaId);
+  area.innerHTML="";
+  hand.forEach((c,i)=>{
     const div = document.createElement('div');
-    div.className="card"; div.innerText=c;
-    cardsDiv.appendChild(div);
+    div.className="card";
+    div.innerText = c.value+c.suit;
+    div.style.left = `${i*55}px`;
+    if(isPlayer) {
+      div.addEventListener('click', ()=>playCard(c));
+    }
+    area.appendChild(div);
   });
+}
+
+// Play card
+function playCard(card) {
+  // remove from playerHand
+  playerHand = playerHand.filter(c=>c!==card);
+  tableCards.push(card);
+  renderHand(playerHand,'playerArea');
+  renderTable();
+  botMove();
+}
+
+// Render table
+function renderTable() {
+  const table = document.getElementById('tableArea');
+  table.innerHTML="";
+  tableCards.forEach((c,i)=>{
+    const div = document.createElement('div');
+    div.className="card";
+    div.innerText = c.value+c.suit;
+    div.style.left = `${i*60}px`;
+    table.appendChild(div);
+  });
+}
+
+// Bot simple move
+function botMove() {
+  if(botHand.length===0) return;
+  const card = botHand.pop();
+  tableCards.push(card);
+  renderHand(botHand,'opponentArea',false);
+  renderTable();
+}
+
+// Play vs Bot
+document.getElementById('playBot').addEventListener('click', ()=>{
+  createDeck();
+  playerHand = deck.splice(0,6);
+  botHand = deck.splice(0,6);
+  tableCards=[];
+  renderHand(playerHand,'playerArea');
+  renderHand(botHand,'opponentArea',false);
+  renderTable();
 });
 
-// WebSocket rooms
+// WebSocket rooms (basic)
 const ws = new WebSocket(`wss://${location.host}`);
 const roomCodeDiv = document.getElementById('roomCode');
 
@@ -90,14 +140,7 @@ ws.onmessage = (msg)=>{
     alert("Room created! Share code with friend.");
   }
   if(data.type==='startGame') {
-    cardsDiv.innerHTML="";
-    const deck = generateDeck();
-    const hand = deck.slice(0,6);
-    hand.forEach(c=>{
-      const div = document.createElement('div');
-      div.className="card"; div.innerText=c;
-      cardsDiv.appendChild(div);
-    });
+    document.getElementById('playBot').click();
     alert("Game started!");
   }
   if(data.type==='error') alert(data.message);

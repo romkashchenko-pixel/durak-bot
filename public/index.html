@@ -2,23 +2,107 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Durak 🃏 Arena</title>
+<title>Durak 🃏</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-body { background:#0f172a; color:white; font-family:system-ui; text-align:center; }
-button { border-radius:16px; padding:14px 20px; border:none; background:#6366f1; color:white; font-size:16px; margin:8px; cursor:pointer;}
+body { margin:0; padding:0; font-family:system-ui; background:#0f172a; color:white; display:flex; flex-direction:column; align-items:center; }
+header { width:100%; padding:12px; text-align:center; background:#1e293b; font-size:20px; font-weight:bold; }
+.profile { display:flex; flex-direction:column; align-items:center; margin:10px; }
+.profile img { width:80px; height:80px; border-radius:50%; margin-bottom:8px; }
+button { width:80%; max-width:300px; padding:16px; margin:8px 0; border:none; border-radius:16px; font-size:18px; color:white; background:#6366f1; cursor:pointer; }
+#cards { display:flex; flex-wrap:wrap; justify-content:center; margin-top:12px; }
+.card { width:60px; height:90px; border-radius:8px; background:white; color:black; display:flex; align-items:center; justify-content:center; margin:4px; font-weight:bold; }
+#roomCode { margin-top:10px; font-size:18px; }
 </style>
 </head>
 <body>
-<h2>🎴 Durak 🃏 Arena</h2>
-<p id="user"></p>
-<button>Create Room</button>
-<button>Play vs Bot</button>
+
+<header>Durak 🃏</header>
+
+<div class="profile">
+  <img id="avatar" src="" alt="Avatar">
+  <input id="nickname" type="text" placeholder="Change nickname">
+  <button id="saveProfile">Save Profile</button>
+</div>
+
+<button id="playBot">Play vs Bot</button>
+<button id="createRoom">Create Room</button>
+<input id="joinCode" type="text" placeholder="Enter Room Code">
+<button id="joinRoom">Join Room</button>
+
+<div id="roomCode"></div>
+<div id="cards"></div>
+
 <script>
 const tg = window.Telegram.WebApp;
 tg.expand();
-document.getElementById('user').innerText =
-  'Hello, ' + (tg.initDataUnsafe.user?.username || 'Player');
+
+// profile
+const avatarImg = document.getElementById('avatar');
+const nicknameInput = document.getElementById('nickname');
+avatarImg.src = tg.initDataUnsafe.user?.photo_url || "https://via.placeholder.com/80";
+nicknameInput.value = tg.initDataUnsafe.user?.username || "Player";
+document.getElementById('saveProfile').addEventListener('click', () => {
+  localStorage.setItem('durak_nick', nicknameInput.value);
+  alert("Profile saved!");
+});
+
+// basic deck
+function generateDeck() {
+  const suits = ["♠", "♥", "♦", "♣"];
+  const values = ["6","7","8","9","10","J","Q","K","A"];
+  const deck = [];
+  for(const s of suits) {
+    for(const v of values) deck.push(v+s);
+  }
+  return deck.sort(()=>Math.random()-0.5);
+}
+
+const cardsDiv = document.getElementById('cards');
+document.getElementById('playBot').addEventListener('click', ()=>{
+  cardsDiv.innerHTML = "";
+  const deck = generateDeck();
+  const hand = deck.slice(0,6);
+  hand.forEach(c=>{
+    const div = document.createElement('div');
+    div.className="card"; div.innerText=c;
+    cardsDiv.appendChild(div);
+  });
+});
+
+// WebSocket rooms
+const ws = new WebSocket(`wss://${location.host}`);
+const roomCodeDiv = document.getElementById('roomCode');
+
+document.getElementById('createRoom').addEventListener('click', ()=>{
+  ws.send(JSON.stringify({type:'createRoom'}));
+});
+
+document.getElementById('joinRoom').addEventListener('click', ()=>{
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  if(code) ws.send(JSON.stringify({type:'joinRoom', code}));
+});
+
+ws.onmessage = (msg)=>{
+  const data = JSON.parse(msg.data);
+  if(data.type==='roomCreated') {
+    roomCodeDiv.innerText = `Room Code: ${data.code}`;
+    alert("Room created! Share code with friend.");
+  }
+  if(data.type==='startGame') {
+    cardsDiv.innerHTML="";
+    const deck = generateDeck();
+    const hand = deck.slice(0,6);
+    hand.forEach(c=>{
+      const div = document.createElement('div');
+      div.className="card"; div.innerText=c;
+      cardsDiv.appendChild(div);
+    });
+    alert("Game started!");
+  }
+  if(data.type==='error') alert(data.message);
+};
 </script>
+
 </body>
 </html>
